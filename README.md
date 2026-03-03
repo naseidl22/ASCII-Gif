@@ -12,7 +12,7 @@ Built with **PySide6** for the GUI and **Pillow** for image processing.
 * Adjustable scale percentage
 * Adjustable font size
 * Real-time progress bar
-* Responsive UI (conversion runs in a background thread)
+* Responsive UI
 * Custom monospace font rendering (Ubuntu Mono)
 
 ---
@@ -22,7 +22,7 @@ Built with **PySide6** for the GUI and **Pillow** for image processing.
 * Python 3
 * PySide6 (Qt for Python)
 * Pillow (PIL)
-* PyInstaller (for building executables)
+* PyInstaller
 
 ---
 
