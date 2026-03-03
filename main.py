@@ -1,13 +1,39 @@
 import sys
 import os
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QPushButton, QLabel, QFileDialog,
-    QVBoxLayout, QHBoxLayout,
-    QSlider, QProgressBar, QMessageBox
+    QVBoxLayout, QSlider, QProgressBar, QMessageBox
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal, QObject
+
 from converter import convert_gif
+
+class Worker(QObject):
+    progress = Signal(int)
+    finished = Signal()
+    error = Signal(str)
+
+    def __init__(self, input_path, output_path, scale, font_size):
+        super().__init__()
+        self.input_path = input_path
+        self.output_path = output_path
+        self.scale = scale
+        self.font_size = font_size
+
+    def run(self):
+        try:
+            convert_gif(
+                self.input_path,
+                self.output_path,
+                scale=self.scale,
+                font_size=self.font_size,
+                progress_callback=self.progress.emit
+            )
+            self.finished.emit()
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class MainWindow(QMainWindow):
@@ -19,10 +45,11 @@ class MainWindow(QMainWindow):
 
         self.input_path = None
         self.output_path = None
+        self.thread = None
+        self.worker = None
 
         central = QWidget()
         self.setCentralWidget(central)
-
         main_layout = QVBoxLayout()
 
         # File selection
@@ -67,6 +94,7 @@ class MainWindow(QMainWindow):
 
         central.setLayout(main_layout)
 
+
     def select_file(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Select GIF", "", "GIF Files (*.gif)"
@@ -82,34 +110,52 @@ class MainWindow(QMainWindow):
     def update_font_label(self):
         self.font_label.setText(f"Font Size: {self.font_slider.value()}")
 
+
     def convert(self):
         if not self.input_path:
             QMessageBox.warning(self, "No File", "Please select a GIF first.")
             return
 
-        try:
-            self.progress.setValue(10)
+        self.convert_button.setEnabled(False)
+        self.progress.setValue(0)
 
-            convert_gif(
-                self.input_path,
-                self.output_path,
-                scale=self.scale_slider.value() / 100,
-                font_size=self.font_slider.value(),
-                progress_callback=self.update_progress
-            )
+        self.thread = QThread()
+        self.worker = Worker(
+            self.input_path,
+            self.output_path,
+            self.scale_slider.value() / 100,
+            self.font_slider.value()
+        )
 
-            self.progress.setValue(100)
-            QMessageBox.information(self, "Done", "Conversion complete!")
+        self.worker.moveToThread(self.thread)
 
-        except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+        self.thread.started.connect(self.worker.run)
+        self.worker.progress.connect(self.update_progress)
+        self.worker.finished.connect(self.conversion_done)
+        self.worker.error.connect(self.conversion_error)
+
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.thread.start()
 
     def update_progress(self, value):
         self.progress.setValue(value)
 
+    def conversion_done(self):
+        self.convert_button.setEnabled(True)
+        self.progress.setValue(100)
+        QMessageBox.information(self, "Done", "Conversion complete!")
 
-app = QApplication(sys.argv)
-app.setStyle("Fusion")
-window = MainWindow()
-window.show()
-sys.exit(app.exec())
+    def conversion_error(self, message):
+        self.convert_button.setEnabled(True)
+        QMessageBox.critical(self, "Error", message)
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
